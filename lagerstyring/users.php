@@ -1,7 +1,5 @@
 <?php
-$page_title = 'Brukere';
-$active_nav = 'brukere';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/bootstrap.php';
 require_admin();
 
 $errors   = [];
@@ -84,6 +82,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggl
 }
 
 $users = $pdo->query("SELECT id, username, is_admin, created_at FROM users ORDER BY id ASC")->fetchAll();
+
+$page_title = 'Brukere';
+$active_nav = 'brukere';
+require_once __DIR__ . '/includes/header.php';
 ?>
 
 <div class="page-header">

@@ -1,0 +1,6 @@
+# Lokale serverinnstillinger (databasepassord m.m.)
+lagerstyring/config.local.php
+
+# Opplastede bilder skal ikke i git
+lagerstyring/uploads/*
+!lagerstyring/uploads/.htaccess

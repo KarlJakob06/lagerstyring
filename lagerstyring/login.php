@@ -1,6 +1,5 @@
 <?php
-session_set_cookie_params(['httponly' => true, 'samesite' => 'Strict']);
-session_start();
+require_once __DIR__ . '/auth.php';
 
 if (!empty($_SESSION['user_id'])) {
     header('Location: index.php');

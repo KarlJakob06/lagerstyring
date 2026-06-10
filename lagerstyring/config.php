@@ -1,12 +1,26 @@
 <?php
 /**
- * Databasekonfigurasjon — fyll inn dine Uniweb-detaljer.
- * Finn disse i kontrollpanelet under "MySQL-databaser".
+ * Applikasjonskonfigurasjon.
+ *
+ * Databasedetaljene ligger i config.local.php — en fil som IKKE er i git.
+ * Dermed kan koden oppdateres automatisk fra GitHub uten at passord
+ * overskrives eller havner i repoet.
+ *
+ * Oppsett på serveren (én gang):
+ *   1. Kopier config.local.example.php til config.local.php
+ *   2. Fyll inn dine Uniweb-databasedetaljer
  */
-define('DB_HOST', 'localhost');           // Vanligvis localhost hos Uniweb
-define('DB_NAME', 'cwqc8dls8_db_lager');   // ← Bytt ut
-define('DB_USER', 'cwqc8dls8_db_lager'); // ← Bytt ut
-define('DB_PASS', 'O0*/CNEc7U60'); // ← Bytt ut
+
+$local_config = __DIR__ . '/config.local.php';
+if (is_file($local_config)) {
+    require $local_config;
+} else {
+    die('<div style="font-family:sans-serif;padding:2rem;color:#c00">'
+        . '<strong>config.local.php mangler.</strong><br>'
+        . 'Kopier <code>config.local.example.php</code> til <code>config.local.php</code> '
+        . 'på serveren og fyll inn databasedetaljene fra Uniweb-kontrollpanelet.'
+        . '</div>');
+}
 
 define('APP_NAME', 'Lagerstyring – Arbeidsbil');
 
@@ -32,6 +46,6 @@ try {
 } catch (PDOException $e) {
     die('<div style="font-family:sans-serif;padding:2rem;color:#c00">'
         . 'Kunne ikke koble til databasen.<br>'
-        . 'Sjekk at DB_HOST, DB_NAME, DB_USER og DB_PASS i config.php er korrekte.'
+        . 'Sjekk at DB_HOST, DB_NAME, DB_USER og DB_PASS i config.local.php er korrekte.'
         . '</div>');
 }

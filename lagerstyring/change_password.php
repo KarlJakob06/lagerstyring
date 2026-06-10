@@ -1,7 +1,5 @@
 <?php
-$page_title = 'Bytt passord';
-$active_nav = 'passord';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/bootstrap.php';
 
 $errors  = [];
 $success = false;
@@ -37,6 +35,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
+$page_title = 'Bytt passord';
+$active_nav = 'passord';
+require_once __DIR__ . '/includes/header.php';
 ?>
 
 <div class="page-header">

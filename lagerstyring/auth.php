@@ -1,6 +1,10 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) {
-    session_set_cookie_params(['httponly' => true, 'samesite' => 'Strict']);
+    session_set_cookie_params([
+        'httponly' => true,
+        'samesite' => 'Strict',
+        'secure'   => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+    ]);
     session_start();
 }
 
@@ -47,9 +51,9 @@ function rotate_csrf(): void {
     unset($_SESSION['csrf_token']);
 }
 
-/** HTML-escape snarvei. */
-function e(string $s): string {
-    return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+/** HTML-escape snarvei (tåler null fra databasen). */
+function e(?string $s): string {
+    return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 }
 
 /** Flash-melding: lagre til neste sidevisning. */
