@@ -1,0 +1,6 @@
+# Hindre kjøring av PHP og andre skript i opplastingsmappen
+<FilesMatch "\.php[s567]?$|\.phtml$|\.phar$">
+    Deny from all
+</FilesMatch>
+
+Options -ExecCGI
