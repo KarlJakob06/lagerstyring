@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Inter',sans-serif;background:#eef1f6;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1rem}
 .card{background:#fff;border-radius:14px;box-shadow:0 4px 28px rgba(0,0,0,.13);max-width:400px;width:100%;overflow:hidden}
-.card-top{background:#0d1f3c;padding:2.25rem 2rem 1.75rem;text-align:center;color:#fff}
+.card-top{background:#1a6fe8;padding:2.25rem 2rem 1.75rem;text-align:center;color:#fff}
 .logo{font-size:2.4rem;margin-bottom:.4rem}
 h1{font-size:1.25rem;font-weight:700;letter-spacing:-.2px}
 .subtitle{font-size:.82rem;color:rgba(255,255,255,.6);margin-top:.3rem}
@@ -57,14 +57,14 @@ input[type=text],input[type=password]{
   width:100%;padding:.62rem .9rem;border:1px solid #dde2ec;border-radius:7px;
   font-size:.93rem;outline:none;font-family:inherit;color:#1a2535;transition:border-color .15s,box-shadow .15s;
 }
-input:focus{border-color:#7aa3d4;box-shadow:0 0 0 3px rgba(13,31,60,.10)}
+input:focus{border-color:#1a6fe8;box-shadow:0 0 0 3px #e8f1fd}
 .alert{background:#fef2f2;border:1px solid #fca5a5;border-left:4px solid #ef4444;border-radius:7px;padding:.7rem .95rem;margin-bottom:1.1rem;font-size:.875rem;color:#c53030}
 .btn{
-  width:100%;padding:.7rem;background:#0d1f3c;color:#fff;border:none;border-radius:8px;
+  width:100%;padding:.7rem;background:#1a6fe8;color:#fff;border:none;border-radius:8px;
   font-size:.95rem;font-weight:600;cursor:pointer;font-family:inherit;margin-top:.25rem;
   transition:background .15s;
 }
-.btn:hover{background:#162f58}
+.btn:hover{background:#1257bf}
 footer{margin-top:1.5rem;font-size:.75rem;color:#a0aab7}
 </style>
 </head>
