@@ -52,10 +52,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         if ($del_id === (int)$_SESSION['user_id']) {
             flash('error', 'Du kan ikke slette din egen bruker.');
         } elseif ($del_id) {
+            // Flytt brukerens personlige varer til felleslageret først
+            $pdo->prepare("UPDATE items SET owner_id = NULL WHERE owner_id = ?")->execute([$del_id]);
             $del = $pdo->prepare("DELETE FROM users WHERE id = ?");
             $del->execute([$del_id]);
             rotate_csrf();
-            flash('success', 'Brukeren ble slettet.');
+            flash('success', 'Brukeren ble slettet. Varene fra det personlige lageret ble flyttet til felleslageret.');
         }
     }
     header('Location: users.php');
@@ -81,7 +83,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggl
     exit;
 }
 
-$users = $pdo->query("SELECT id, username, is_admin, created_at FROM users ORDER BY id ASC")->fetchAll();
+// Tilbakestill passord for en bruker
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'reset_password') {
+    if (!verify_csrf($_POST['csrf_token'] ?? '')) {
+        flash('error', 'Ugyldig sikkerhetstoken.');
+    } else {
+        $r_id  = (int)($_POST['user_id'] ?? 0);
+        $pass1 = $_POST['password']  ?? '';
+        $pass2 = $_POST['password2'] ?? '';
+        if (!$r_id)                 flash('error', 'Velg en bruker.');
+        elseif (strlen($pass1) < 8) flash('error', 'Nytt passord må ha minst 8 tegn.');
+        elseif ($pass1 !== $pass2)  flash('error', 'Passordene stemmer ikke overens.');
+        else {
+            $pdo->prepare("UPDATE users SET password_hash = ?, failed_attempts = 0, locked_until = NULL WHERE id = ?")
+                ->execute([password_hash($pass1, PASSWORD_DEFAULT), $r_id]);
+            rotate_csrf();
+            flash('success', '🔑 Passordet ble tilbakestilt, og kontoen er låst opp.');
+        }
+    }
+    header('Location: users.php');
+    exit;
+}
+
+// Lås opp en konto som er sperret etter mislykkede innloggingsforsøk
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'unlock') {
+    if (!verify_csrf($_POST['csrf_token'] ?? '')) {
+        flash('error', 'Ugyldig sikkerhetstoken.');
+    } else {
+        $u_id = (int)($_POST['user_id'] ?? 0);
+        if ($u_id) {
+            $pdo->prepare("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?")->execute([$u_id]);
+            rotate_csrf();
+            flash('success', '🔓 Kontoen ble låst opp.');
+        }
+    }
+    header('Location: users.php');
+    exit;
+}
+
+$users = $pdo->query(
+    "SELECT id, username, is_admin, created_at, last_login, locked_until
+     FROM users ORDER BY id ASC"
+)->fetchAll();
 
 $page_title = 'Brukere';
 $active_nav = 'brukere';
@@ -107,14 +150,18 @@ require_once __DIR__ . '/includes/header.php';
         <th>Brukernavn</th>
         <th>Rolle</th>
         <th>Opprettet</th>
-        <th style="width:120px">Handlinger</th>
+        <th>Sist innlogget</th>
+        <th style="width:150px">Handlinger</th>
       </tr></thead>
       <tbody>
-      <?php foreach ($users as $u): ?>
+      <?php foreach ($users as $u):
+        $is_locked = $u['locked_until'] && strtotime($u['locked_until']) > time();
+      ?>
         <tr>
           <td>
             <strong><?= e($u['username']) ?></strong>
             <?= (int)$u['id'] === (int)$_SESSION['user_id'] ? ' <span style="font-size:.75rem;color:#68768a">(deg)</span>' : '' ?>
+            <?= $is_locked ? ' <span class="badge badge-zero">🔒 Låst</span>' : '' ?>
           </td>
           <td>
             <?php if ($u['is_admin']): ?>
@@ -124,6 +171,7 @@ require_once __DIR__ . '/includes/header.php';
             <?php endif; ?>
           </td>
           <td style="font-size:.82rem;color:#68768a"><?= date('d.m.Y', strtotime($u['created_at'])) ?></td>
+          <td style="font-size:.82rem;color:#68768a"><?= $u['last_login'] ? date('d.m.Y H:i', strtotime($u['last_login'])) : '—' ?></td>
           <td>
             <div style="display:flex;gap:.4rem;flex-wrap:wrap">
               <?php if ((int)$u['id'] !== (int)$_SESSION['user_id']): ?>
@@ -136,8 +184,17 @@ require_once __DIR__ . '/includes/header.php';
                   <?= $u['is_admin'] ? '👤' : '⭐' ?>
                 </button>
               </form>
+              <?php if ($is_locked): ?>
+              <!-- Lås opp -->
+              <form method="POST">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="unlock">
+                <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+                <button type="submit" class="btn btn-outline btn-sm btn-icon" title="Lås opp konto">🔓</button>
+              </form>
+              <?php endif; ?>
               <!-- Slett -->
-              <form method="POST" onsubmit="return confirm('Slett brukeren «<?= e(addslashes($u['username'])) ?>»?')">
+              <form method="POST" onsubmit="return confirm('Slett brukeren «<?= e(addslashes($u['username'])) ?>»? Varene i det personlige lageret flyttes til felleslageret.')">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="delete">
                 <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
@@ -152,6 +209,40 @@ require_once __DIR__ . '/includes/header.php';
       <?php endforeach; ?>
       </tbody>
     </table>
+  </div>
+</div>
+
+<!-- Tilbakestill passord -->
+<div class="card" style="max-width:520px;margin-bottom:1.5rem">
+  <div class="card-header"><span style="font-weight:600">🔁 Tilbakestill passord</span></div>
+  <div class="card-body">
+    <form method="POST">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="reset_password">
+      <div class="form-grid">
+        <div class="form-group full">
+          <label for="reset_user">Bruker</label>
+          <select id="reset_user" name="user_id" required>
+            <option value="">— Velg bruker —</option>
+            <?php foreach ($users as $u): if ((int)$u['id'] === (int)$_SESSION['user_id']) continue; ?>
+            <option value="<?= (int)$u['id'] ?>"><?= e($u['username']) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <span class="hint">Bruk «Bytt passord» i menyen for å endre ditt eget.</span>
+        </div>
+        <div class="form-group">
+          <label for="reset_password">Nytt passord (min. 8 tegn)</label>
+          <input type="password" id="reset_password" name="password" required autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label for="reset_password2">Gjenta passord</label>
+          <input type="password" id="reset_password2" name="password2" required autocomplete="new-password">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-outline">🔁 Tilbakestill</button>
+      </div>
+    </form>
   </div>
 </div>
 

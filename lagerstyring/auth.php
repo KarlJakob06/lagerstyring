@@ -51,6 +51,15 @@ function rotate_csrf(): void {
     unset($_SESSION['csrf_token']);
 }
 
+/** Kan innlogget bruker endre/slette en vare med gitt eier?
+ *  Felles varer (NULL) kan endres av alle, egne varer av eieren,
+ *  og admin kan endre alt. */
+function can_modify_item(?int $owner_id): bool {
+    return $owner_id === null
+        || $owner_id === (int)($_SESSION['user_id'] ?? 0)
+        || !empty($_SESSION['is_admin']);
+}
+
 /** HTML-escape snarvei (tåler null fra databasen). */
 function e(?string $s): string {
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');

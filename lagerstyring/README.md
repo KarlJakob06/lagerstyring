@@ -7,8 +7,13 @@ En enkel, sikker webapp for å holde oversikt over varelager i arbeidsbilen.
 ## Funksjoner
 
 - ✅ Innlogging med brukernavn og passord (bcrypt-kryptert)
-- ✅ Legg til, rediger og slett varer
-- ✅ Felter: Varenavn, Elnummer, Antall, Minimumsantall, Bilde
+- ✅ Kontolås etter 5 mislykkede innloggingsforsøk (10 min), opplåsing
+     og passord-tilbakestilling av admin, «sist innlogget»-oversikt
+- ✅ Felles lager + personlig lager per bruker, med tilgangsstyring
+- ✅ Legg til, rediger og slett varer (og flytt dem mellom lagre)
+- ✅ Felter: Varenavn, Elnummer, Beholdning, Minimum, Enhet, Bilde
+- ✅ Automatisk enhetsdeteksjon: kabel/ledning/rør måles i meter,
+     resten i stk (kan overstyres manuelt)
 - ✅ Advarsel ved lav beholdning (markeres tydelig)
 - ✅ Automatisk henting av produktbilde fra EFObasen via elnummer
      (felleskilden grossistene Ahlsell, Onninen, Solar og Sonepar bruker)

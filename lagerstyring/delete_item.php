@@ -14,13 +14,20 @@ if (!verify_csrf($_POST['csrf_token'] ?? '')) {
     exit;
 }
 
+$lager = ($_POST['lager'] ?? 'felles') === 'mitt' ? 'mitt' : 'felles';
+
 $id = (int)($_POST['id'] ?? 0);
 if ($id) {
-    $stmt = $pdo->prepare("SELECT name, image_path FROM items WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT name, image_path, owner_id FROM items WHERE id = ?");
     $stmt->execute([$id]);
     $item = $stmt->fetch();
 
     if ($item) {
+        if (!can_modify_item($item['owner_id'] !== null ? (int)$item['owner_id'] : null)) {
+            flash('error', 'Du har ikke tilgang til å slette denne varen.');
+            header('Location: index.php?lager=' . $lager);
+            exit;
+        }
         $del = $pdo->prepare("DELETE FROM items WHERE id = ?");
         $del->execute([$id]);
 
@@ -33,5 +40,5 @@ if ($id) {
 }
 
 rotate_csrf();
-header('Location: index.php');
+header('Location: index.php?lager=' . $lager);
 exit;

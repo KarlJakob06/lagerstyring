@@ -15,11 +15,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
 
     if ($username && $password) {
-        $stmt = $pdo->prepare("SELECT id, password_hash, is_admin FROM users WHERE username = ? LIMIT 1");
+        $stmt = $pdo->prepare(
+            "SELECT id, password_hash, is_admin, failed_attempts, locked_until
+             FROM users WHERE username = ? LIMIT 1"
+        );
         $stmt->execute([$username]);
         $user = $stmt->fetch();
 
-        if ($user && password_verify($password, $user['password_hash'])) {
+        if ($user && $user['locked_until'] && strtotime($user['locked_until']) > time()) {
+            $error = 'Kontoen er midlertidig låst etter for mange mislykkede forsøk. '
+                   . 'Prøv igjen om ' . max(1, (int)ceil((strtotime($user['locked_until']) - time()) / 60)) . ' minutt(er).';
+        } elseif ($user && password_verify($password, $user['password_hash'])) {
+            // Oppgrader hash hvis PHP har fått en sterkere standard
+            if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
+                $pdo->prepare("UPDATE users SET password_hash = ? WHERE id = ?")
+                    ->execute([password_hash($password, PASSWORD_DEFAULT), $user['id']]);
+            }
+            $pdo->prepare("UPDATE users SET failed_attempts = 0, locked_until = NULL, last_login = ? WHERE id = ?")
+                ->execute([date('Y-m-d H:i:s'), $user['id']]);
+
             session_regenerate_id(true);
             $_SESSION['user_id']  = $user['id'];
             $_SESSION['username'] = $username;
@@ -27,6 +41,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: index.php');
             exit;
         } else {
+            // Tell mislykkede forsøk — lås kontoen i 10 min etter 5 feil
+            if ($user) {
+                $attempts = (int)$user['failed_attempts'] + 1;
+                if ($attempts >= 5) {
+                    $pdo->prepare("UPDATE users SET failed_attempts = 0, locked_until = ? WHERE id = ?")
+                        ->execute([date('Y-m-d H:i:s', time() + 600), $user['id']]);
+                } else {
+                    $pdo->prepare("UPDATE users SET failed_attempts = ? WHERE id = ?")
+                        ->execute([$attempts, $user['id']]);
+                }
+            }
             // Bevisst vag feilmelding
             $error = 'Feil brukernavn eller passord.';
         }
