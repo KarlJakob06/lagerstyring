@@ -4,9 +4,9 @@
  * Finn disse i kontrollpanelet under "MySQL-databaser".
  */
 define('DB_HOST', 'localhost');           // Vanligvis localhost hos Uniweb
-define('DB_NAME', 'DIN_DATABASE_NAVN');   // ← Bytt ut
-define('DB_USER', 'DIN_DATABASE_BRUKER'); // ← Bytt ut
-define('DB_PASS', 'DITT_DATABASE_PASSORD'); // ← Bytt ut
+define('DB_NAME', 'cwqc8dls8_db_lager');   // ← Bytt ut
+define('DB_USER', 'cwqc8dls8_db_lager'); // ← Bytt ut
+define('DB_PASS', 'O0*/CNEc7U60'); // ← Bytt ut
 
 define('APP_NAME', 'Lagerstyring – Arbeidsbil');
 
