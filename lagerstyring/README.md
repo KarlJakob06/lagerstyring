@@ -28,7 +28,8 @@ En enkel, sikker webapp for å holde oversikt over varelager i arbeidsbilen.
 
 ### Steg 2 — Konfigurer appen
 
-Åpne `config.php` og fyll inn dine Uniweb-databasedetaljer:
+Kopier `config.local.example.php` til `config.local.php` **på serveren**
+og fyll inn dine Uniweb-databasedetaljer:
 
 ```php
 define('DB_HOST', 'localhost');
@@ -36,6 +37,10 @@ define('DB_NAME', 'DIN_DATABASE_NAVN');
 define('DB_USER', 'DIN_DATABASE_BRUKER');
 define('DB_PASS', 'DITT_DATABASE_PASSORD');
 ```
+
+> `config.local.php` ligger ikke i git. Dermed kan koden oppdateres
+> automatisk fra GitHub uten at passordet overskrives — og passordet
+> havner aldri i repoet.
 
 ### Steg 3 — Last opp filer
 
@@ -100,24 +105,40 @@ Logg inn som administrator og gå til **Brukere** i menyen. Her kan du:
 
 ```
 lagerstyring/
-├── config.php           ← Databasekonfigurasjon (rediger dette)
-├── auth.php             ← Autentiseringshjelper (ikke rediger)
-├── setup.php            ← SLETT ETTER BRUK
-├── login.php            ← Innloggingsside
-├── logout.php           ← Utlogging
-├── index.php            ← Lageroversikt (startside)
-├── add_item.php         ← Legg til vare
-├── edit_item.php        ← Rediger vare
-├── delete_item.php      ← Slett vare
-├── ajax_quantity.php    ← AJAX antallsoppdatering
-├── users.php            ← Brukerstyring (kun admin)
-├── change_password.php  ← Bytt passord
+├── config.php                 ← Applikasjonskonfig (i git — ikke rediger på server)
+├── config.local.example.php   ← Mal for databasedetaljer
+├── config.local.php           ← Dine databasedetaljer (KUN på server, ikke i git)
+├── auth.php                   ← Autentiseringshjelper (ikke rediger)
+├── setup.php                  ← SLETT ETTER BRUK
+├── login.php                  ← Innloggingsside
+├── logout.php                 ← Utlogging
+├── index.php                  ← Lageroversikt (startside)
+├── add_item.php               ← Legg til vare
+├── edit_item.php              ← Rediger vare
+├── delete_item.php            ← Slett vare
+├── ajax_quantity.php          ← AJAX antallsoppdatering
+├── users.php                  ← Brukerstyring (kun admin)
+├── change_password.php        ← Bytt passord
+├── assets/
+│   └── style.css              ← Felles CSS (caches av nettleseren)
 ├── includes/
-│   ├── header.php       ← Felles topp og CSS
-│   └── footer.php       ← Felles bunn
+│   ├── bootstrap.php          ← Felles oppstart (config + auth + innlogging)
+│   ├── header.php             ← Felles topp
+│   └── footer.php             ← Felles bunn
 └── uploads/
-    └── .htaccess        ← Sikkerhetsregler for opplastinger
+    └── .htaccess              ← Sikkerhetsregler for opplastinger
 ```
+
+---
+
+## 🔄 Automatisk oppdatering fra GitHub
+
+Se [`deploy/DEPLOY.md`](../deploy/DEPLOY.md) for tre alternativer:
+
+1. **Cron-jobb + PHP-skript** (`deploy/update_from_github.php`) — krever
+   ikke git/SSH på webhotellet. Anbefalt hos Uniweb.
+2. **Cron-jobb + git** (`deploy/deploy.sh`) — hvis abonnementet har SSH.
+3. **GitHub Actions + FTP** — push-basert, oppdaterer umiddelbart.
 
 ---
 

@@ -1,7 +1,5 @@
 <?php
-$page_title = 'Legg til vare';
-$active_nav = 'legg_til';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/bootstrap.php';
 
 $errors = [];
 $values = ['name' => '', 'elnummer' => '', 'quantity' => '0', 'min_quantity' => '0'];
@@ -66,6 +64,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
+$page_title = 'Legg til vare';
+$active_nav = 'legg_til';
+require_once __DIR__ . '/includes/header.php';
 ?>
 
 <div class="page-header">

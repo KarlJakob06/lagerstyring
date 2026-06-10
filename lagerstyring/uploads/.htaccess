@@ -1,6 +1,12 @@
 # Hindre kjøring av PHP og andre skript i opplastingsmappen
-<FilesMatch "\.php[s567]?$|\.phtml$|\.phar$">
+<FilesMatch "\.(php[s3457]?|phtml|phar)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
     Deny from all
+  </IfModule>
 </FilesMatch>
 
 Options -ExecCGI
