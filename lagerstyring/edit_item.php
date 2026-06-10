@@ -153,7 +153,7 @@ require_once __DIR__ . '/includes/header.php';
       </div><!-- /.form-grid -->
 
       <div class="form-actions">
-        <button type="submit" class="btn btn-amber">💾 Lagre endringer</button>
+        <button type="submit" class="btn btn-primary">💾 Lagre endringer</button>
         <a href="index.php" class="btn btn-outline">Avbryt</a>
       </div>
     </form>

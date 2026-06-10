@@ -1,8 +1,9 @@
 
-</main><!-- /.main -->
-
-<footer style="text-align:center;padding:1.5rem;font-size:.78rem;color:#a0aab7;margin-top:1rem">
+<footer class="site-footer">
   <?= e(APP_NAME) ?> &mdash; <?= date('Y') ?>
 </footer>
+
+</main><!-- /.content -->
+</div><!-- /.layout -->
 </body>
 </html>
