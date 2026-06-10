@@ -36,6 +36,14 @@ Krever **ingen** git eller SSH på serveren — kun PHP med curl og zip
 
 **Tips:** Sjekk `deploy.log` hvis noe ikke fungerer.
 
+**Privat repo?** GitHub-API-et svarer med 404 på private repoer uten
+innlogging. Lag en *fine-grained personal access token* på GitHub
+(Settings → Developer settings → Personal access tokens) med lesetilgang
+til **Contents** for repoet, og lim den inn i `$GITHUB_TOKEN` øverst i
+`update_from_github.php` **på serveren**. Merk at filen ligger utenfor
+webroten og ikke oppdateres automatisk — endringer i den må lastes opp
+manuelt.
+
 ### Cron-syntaks forklart
 
 ```

@@ -20,6 +20,8 @@ $REPO_SUBDIR   = 'lagerstyring';                          // Mappen i repoet som
 $WEB_DIR       = dirname(__DIR__) . '/public_html/lagerstyring'; // ← Juster til din webrot
 $STATE_FILE    = __DIR__ . '/.last_deployed_commit';
 $DEPLOY_SECRET = '';   // Sett en lang, tilfeldig streng hvis skriptet kalles via nettleser/wget
+$GITHUB_TOKEN  = '';   // Påkrevd hvis repoet er privat: lag en "fine-grained token" med
+                       // lesetilgang til Contents på github.com → Settings → Developer settings
 $PRESERVE      = ['config.local.php', 'uploads'];         // Røres aldri i webroten
 // -----------------------------------
 
@@ -36,10 +38,16 @@ function say(string $msg): void {
 }
 
 function http_get(string $url): string {
+    global $GITHUB_TOKEN;
+    $headers = ['Accept: application/vnd.github+json'];
+    if ($GITHUB_TOKEN !== '') {
+        $headers[] = 'Authorization: Bearer ' . $GITHUB_TOKEN;
+    }
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTPHEADER     => $headers,
         CURLOPT_USERAGENT      => 'lagerstyring-deploy',
         CURLOPT_TIMEOUT        => 120,
     ]);
@@ -47,7 +55,8 @@ function http_get(string $url): string {
     $code = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
     curl_close($ch);
     if ($data === false || $code !== 200) {
-        throw new RuntimeException("Nedlasting feilet ($code): $url");
+        throw new RuntimeException("Nedlasting feilet ($code): $url"
+            . ($code === 404 ? ' — er repoet privat? Sett $GITHUB_TOKEN.' : ''));
     }
     return $data;
 }
@@ -67,8 +76,9 @@ try {
     }
     say("Ny versjon funnet: $latest (var: " . ($current ?: 'ukjent') . ')');
 
-    // 2. Last ned og pakk ut ZIP av repoet
-    $zipData = http_get("https://codeload.github.com/$GITHUB_REPO/zip/refs/heads/$BRANCH");
+    // 2. Last ned og pakk ut ZIP av repoet (zipball-endepunktet
+    //    fungerer både for offentlige og private repoer med token)
+    $zipData = http_get("https://api.github.com/repos/$GITHUB_REPO/zipball/$BRANCH");
     $tmpZip  = tempnam(sys_get_temp_dir(), 'deploy') . '.zip';
     file_put_contents($tmpZip, $zipData);
 
