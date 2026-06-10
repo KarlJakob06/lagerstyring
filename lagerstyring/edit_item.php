@@ -56,6 +56,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        // Bilde hentet fra EFObasen via knappen i skjemaet?
+        if (!$delete_old && empty($_FILES['image']['name']) && !empty($_POST['fetched_image'])) {
+            $f = basename($_POST['fetched_image']);
+            if (preg_match('/^[a-f0-9]{24}\.(jpg|png|gif|webp)$/', $f) && is_file(UPLOAD_DIR . $f)) {
+                $delete_old = (bool)$item['image_path'];
+                $image_path = $f;
+            }
+        }
+
         // Fjern bilde?
         if (isset($_POST['delete_image']) && !$delete_old) {
             if ($item['image_path'] && file_exists(UPLOAD_DIR . $item['image_path'])) {
@@ -115,12 +124,16 @@ require_once __DIR__ . '/includes/header.php';
           <input type="text" id="name" name="name" value="<?= e($values['name']) ?>" required autofocus>
         </div>
 
-        <div class="form-group">
+        <div class="form-group full">
           <label for="elnummer">Elnummer</label>
           <input type="text" id="elnummer" name="elnummer" value="<?= e($values['elnummer'] ?? '') ?>">
+          <div style="display:flex;gap:.6rem;margin-top:.4rem;align-items:center">
+            <button type="button" class="btn btn-outline btn-sm" onclick="fetchImage(this)">🖼 Hent bilde fra elnummer</button>
+            <img id="fetch-preview" src="" alt="" style="display:none;width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #e3e7ee">
+          </div>
+          <span class="hint" id="fetch-msg">Henter produktbilde fra EFObasen — erstatter nåværende bilde når du lagrer.</span>
+          <input type="hidden" name="fetched_image" id="fetched_image" value="<?= e($_POST['fetched_image'] ?? '') ?>">
         </div>
-
-        <div class="form-group"></div>
 
         <div class="form-group">
           <label for="quantity">Antall på lager *</label>
@@ -159,5 +172,35 @@ require_once __DIR__ . '/includes/header.php';
     </form>
   </div>
 </div>
+
+<script>
+async function fetchImage(btn) {
+  const el  = document.getElementById('elnummer').value.trim();
+  const msg = document.getElementById('fetch-msg');
+  if (!el) { msg.textContent = 'Fyll inn elnummer først.'; return; }
+  btn.disabled = true;
+  msg.textContent = 'Henter bilde fra EFObasen…';
+  try {
+    const res = await fetch('ajax_fetch_image.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `elnummer=${encodeURIComponent(el)}&csrf_token=<?= csrf_token() ?>`
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('fetched_image').value = data.filename;
+      const prev = document.getElementById('fetch-preview');
+      prev.src = data.url;
+      prev.style.display = 'inline-block';
+      msg.textContent = '✅ Bilde hentet — erstatter nåværende når du lagrer.';
+    } else {
+      msg.textContent = '❌ ' + (data.error || 'Fant ikke bilde.');
+    }
+  } catch (e) {
+    msg.textContent = '❌ Noe gikk galt. Prøv igjen.';
+  }
+  btn.disabled = false;
+}
+</script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

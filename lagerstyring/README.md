@@ -10,6 +10,8 @@ En enkel, sikker webapp for å holde oversikt over varelager i arbeidsbilen.
 - ✅ Legg til, rediger og slett varer
 - ✅ Felter: Varenavn, Elnummer, Antall, Minimumsantall, Bilde
 - ✅ Advarsel ved lav beholdning (markeres tydelig)
+- ✅ Automatisk henting av produktbilde fra EFObasen via elnummer
+     (felleskilden grossistene Ahlsell, Onninen, Solar og Sonepar bruker)
 - ✅ Hurtigoppdatering av antall med +/– knapper
 - ✅ Søk på varenavn og elnummer
 - ✅ Brukerstyring for admin (legg til / slett brukere)
