@@ -49,3 +49,7 @@ try {
         . 'Sjekk at DB_HOST, DB_NAME, DB_USER og DB_PASS i config.local.php er korrekte.'
         . '</div>');
 }
+
+// Kjør eventuelle ventende databasemigreringer automatisk
+require_once __DIR__ . '/includes/migrations.php';
+run_migrations($pdo);

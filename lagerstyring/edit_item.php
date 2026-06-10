@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/includes/bootstrap.php';
+require_once __DIR__ . '/includes/units.php';
 
 $id = (int)($_GET['id'] ?? 0);
 if (!$id) { header('Location: index.php'); exit; }
@@ -9,8 +10,19 @@ $stmt->execute([$id]);
 $item = $stmt->fetch();
 if (!$item) { flash('error', 'Varen ble ikke funnet.'); header('Location: index.php'); exit; }
 
+$item_owner = $item['owner_id'] !== null ? (int)$item['owner_id'] : null;
+if (!can_modify_item($item_owner)) {
+    flash('error', 'Du har ikke tilgang til å endre denne varen.');
+    header('Location: index.php');
+    exit;
+}
+// Tilhører varen en annen bruker (admin-redigering)?
+$foreign_owner = $item_owner !== null && $item_owner !== (int)$_SESSION['user_id'];
+
 $errors = [];
 $values = $item; // Start med eksisterende data
+$values['unit']  = normalize_unit($item['unit'] ?? 'stk');
+$values['lager'] = $item_owner === null ? 'felles' : ($foreign_owner ? 'behold' : 'mitt');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf($_POST['csrf_token'] ?? '')) {
@@ -20,6 +32,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $values['elnummer']     = trim($_POST['elnummer']     ?? '');
         $values['quantity']     = (int)($_POST['quantity']    ?? 0);
         $values['min_quantity'] = (int)($_POST['min_quantity']?? 0);
+        $values['unit']         = normalize_unit($_POST['unit'] ?? 'stk');
+        $lager_choices          = $foreign_owner ? ['felles', 'mitt', 'behold'] : ['felles', 'mitt'];
+        $values['lager']        = in_array($_POST['lager'] ?? '', $lager_choices, true) ? $_POST['lager'] : $values['lager'];
 
         if (!$values['name'])            $errors[] = 'Varenavn er påkrevd.';
         if ($values['quantity'] < 0)     $errors[] = 'Antall kan ikke være negativt.';
@@ -56,6 +71,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        // Bilde hentet fra EFObasen via knappen i skjemaet?
+        if (!$delete_old && empty($_FILES['image']['name']) && !empty($_POST['fetched_image'])) {
+            $f = basename($_POST['fetched_image']);
+            if (preg_match('/^[a-f0-9]{24}\.(jpg|png|gif|webp)$/', $f) && is_file(UPLOAD_DIR . $f)) {
+                $delete_old = (bool)$item['image_path'];
+                $image_path = $f;
+            }
+        }
+
         // Fjern bilde?
         if (isset($_POST['delete_image']) && !$delete_old) {
             if ($item['image_path'] && file_exists(UPLOAD_DIR . $item['image_path'])) {
@@ -65,8 +89,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (empty($errors)) {
+            if ($values['lager'] === 'felles')    $owner_id = null;
+            elseif ($values['lager'] === 'mitt')  $owner_id = (int)$_SESSION['user_id'];
+            else                                  $owner_id = $item_owner; // 'behold' — blir hos nåværende eier
             $upd = $pdo->prepare(
-                "UPDATE items SET name=?, elnummer=?, quantity=?, min_quantity=?, image_path=? WHERE id=?"
+                "UPDATE items SET name=?, elnummer=?, quantity=?, min_quantity=?, image_path=?, unit=?, owner_id=? WHERE id=?"
             );
             $upd->execute([
                 $values['name'],
@@ -74,6 +101,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $values['quantity'],
                 $values['min_quantity'],
                 $image_path,
+                $values['unit'],
+                $owner_id,
                 $id,
             ]);
             // Slett gammelt bilde
@@ -82,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             rotate_csrf();
             flash('success', '✅ «' . $values['name'] . '» ble oppdatert.');
-            header('Location: index.php');
+            header('Location: index.php?lager=' . ($owner_id === (int)$_SESSION['user_id'] ? 'mitt' : 'felles'));
             exit;
         }
     }
@@ -115,20 +144,43 @@ require_once __DIR__ . '/includes/header.php';
           <input type="text" id="name" name="name" value="<?= e($values['name']) ?>" required autofocus>
         </div>
 
-        <div class="form-group">
+        <div class="form-group full">
           <label for="elnummer">Elnummer</label>
           <input type="text" id="elnummer" name="elnummer" value="<?= e($values['elnummer'] ?? '') ?>">
+          <div style="display:flex;gap:.6rem;margin-top:.4rem;align-items:center">
+            <button type="button" class="btn btn-outline btn-sm" onclick="fetchImage(this)">🖼 Hent bilde fra elnummer</button>
+            <img id="fetch-preview" src="" alt="" style="display:none;width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #e3e7ee">
+          </div>
+          <span class="hint" id="fetch-msg">Henter produktbilde fra EFObasen — erstatter nåværende bilde når du lagrer.</span>
+          <input type="hidden" name="fetched_image" id="fetched_image" value="<?= e($_POST['fetched_image'] ?? '') ?>">
         </div>
 
-        <div class="form-group"></div>
+        <div class="form-group">
+          <label for="lager">Lager *</label>
+          <select id="lager" name="lager">
+            <option value="felles" <?= $values['lager'] === 'felles' ? 'selected' : '' ?>>🗂 Felles lager</option>
+            <option value="mitt" <?= $values['lager'] === 'mitt' ? 'selected' : '' ?>>🚐 Mitt lager (<?= e($_SESSION['username'] ?? '') ?>)</option>
+            <?php if ($foreign_owner): ?>
+            <option value="behold" <?= $values['lager'] === 'behold' ? 'selected' : '' ?>>👤 Behold hos nåværende eier</option>
+            <?php endif; ?>
+          </select>
+        </div>
 
         <div class="form-group">
-          <label for="quantity">Antall på lager *</label>
+          <label for="unit">Enhet</label>
+          <select id="unit" name="unit">
+            <option value="stk" <?= $values['unit'] === 'stk' ? 'selected' : '' ?>>Antall (stk)</option>
+            <option value="m" <?= $values['unit'] === 'm' ? 'selected' : '' ?>>Meter (m)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="quantity">Beholdning *</label>
           <input type="number" id="quantity" name="quantity" value="<?= (int)$values['quantity'] ?>" min="0" required>
         </div>
 
         <div class="form-group">
-          <label for="min_quantity">Minimumsantall (advarsel)</label>
+          <label for="min_quantity">Minimumsbeholdning (advarsel)</label>
           <input type="number" id="min_quantity" name="min_quantity" value="<?= (int)$values['min_quantity'] ?>" min="0">
         </div>
 
@@ -159,5 +211,35 @@ require_once __DIR__ . '/includes/header.php';
     </form>
   </div>
 </div>
+
+<script>
+async function fetchImage(btn) {
+  const el  = document.getElementById('elnummer').value.trim();
+  const msg = document.getElementById('fetch-msg');
+  if (!el) { msg.textContent = 'Fyll inn elnummer først.'; return; }
+  btn.disabled = true;
+  msg.textContent = 'Henter bilde fra EFObasen…';
+  try {
+    const res = await fetch('ajax_fetch_image.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `elnummer=${encodeURIComponent(el)}&csrf_token=<?= csrf_token() ?>`
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('fetched_image').value = data.filename;
+      const prev = document.getElementById('fetch-preview');
+      prev.src = data.url;
+      prev.style.display = 'inline-block';
+      msg.textContent = '✅ Bilde hentet — erstatter nåværende når du lagrer.';
+    } else {
+      msg.textContent = '❌ ' + (data.error || 'Fant ikke bilde.');
+    }
+  } catch (e) {
+    msg.textContent = '❌ Noe gikk galt. Prøv igjen.';
+  }
+  btn.disabled = false;
+}
+</script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

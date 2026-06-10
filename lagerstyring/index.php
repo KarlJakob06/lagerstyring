@@ -1,10 +1,22 @@
 <?php
-$page_title = 'Lager';
-$active_nav = 'lager';
+require_once __DIR__ . '/includes/bootstrap.php';
+require_once __DIR__ . '/includes/units.php';
+
+// Hvilket lager vises? 'felles' (standard) eller 'mitt'
+$view = ($_GET['lager'] ?? 'felles') === 'mitt' ? 'mitt' : 'felles';
+
+$page_title = $view === 'mitt' ? 'Mitt lager' : 'Felles lager';
+$active_nav = $view === 'mitt' ? 'mitt' : 'lager';
 require_once __DIR__ . '/includes/header.php';
 
-// Hent alle varer
-$items = $pdo->query("SELECT * FROM items ORDER BY name ASC")->fetchAll();
+// Hent varene i valgt lager
+if ($view === 'mitt') {
+    $stmt = $pdo->prepare("SELECT * FROM items WHERE owner_id = ? ORDER BY name ASC");
+    $stmt->execute([$_SESSION['user_id']]);
+} else {
+    $stmt = $pdo->query("SELECT * FROM items WHERE owner_id IS NULL ORDER BY name ASC");
+}
+$items = $stmt->fetchAll();
 
 // Finn varer med lav beholdning
 $low = array_filter($items, fn($i) => $i['quantity'] <= $i['min_quantity'] && $i['min_quantity'] > 0);
@@ -18,7 +30,7 @@ $low = array_filter($items, fn($i) => $i['quantity'] <= $i['min_quantity'] && $i
     <li>
       <?= e($l['name']) ?>
       <?= $l['elnummer'] ? '&nbsp;<span style="color:#92400e;font-size:.8rem">[' . e($l['elnummer']) . ']</span>' : '' ?>
-      — <strong><?= (int)$l['quantity'] ?></strong> stk
+      — <strong><?= (int)$l['quantity'] ?></strong> <?= unit_label($l['unit'] ?? 'stk') ?>
       (min. <?= (int)$l['min_quantity'] ?>)
     </li>
     <?php endforeach; ?>
@@ -27,11 +39,12 @@ $low = array_filter($items, fn($i) => $i['quantity'] <= $i['min_quantity'] && $i
 <?php endif; ?>
 
 <div class="toolbar-card">
+  <span style="font-weight:700;font-size:1.05rem;white-space:nowrap"><?= $view === 'mitt' ? '🚐 Mitt lager' : '🗂 Felles lager' ?></span>
   <div class="search-wrap">
     <span class="search-icon">🔍</span>
     <input type="text" id="search" placeholder="Søk etter varenavn eller elnummer…" autocomplete="off">
   </div>
-  <a href="add_item.php" class="btn btn-primary">＋ Legg til vare</a>
+  <a href="add_item.php?lager=<?= $view ?>" class="btn btn-primary">＋ Legg til vare</a>
 </div>
 
 <?php if (empty($items)): ?>
@@ -39,8 +52,8 @@ $low = array_filter($items, fn($i) => $i['quantity'] <= $i['min_quantity'] && $i
   <div class="card-body" style="text-align:center;padding:3rem 1rem;color:#7a8699">
     <div style="font-size:2.5rem;margin-bottom:.75rem">📦</div>
     <p style="font-size:1rem;font-weight:600;margin-bottom:.4rem">Ingen varer registrert</p>
-    <p style="font-size:.875rem;margin-bottom:1.2rem">Kom i gang ved å legge til den første varen i bilen din.</p>
-    <a href="add_item.php" class="btn btn-primary">＋ Legg til vare</a>
+    <p style="font-size:.875rem;margin-bottom:1.2rem"><?= $view === 'mitt' ? 'Du har ingen varer i ditt personlige lager ennå.' : 'Kom i gang ved å legge til den første varen.' ?></p>
+    <a href="add_item.php?lager=<?= $view ?>" class="btn btn-primary">＋ Legg til vare</a>
   </div>
 </div>
 <?php else: ?>
@@ -75,12 +88,12 @@ $low = array_filter($items, fn($i) => $i['quantity'] <= $i['min_quantity'] && $i
         <?php endif; ?>
       </div>
       <div class="item-card__title"><?= e($item['name']) ?></div>
-      <div class="item-card__sub">Min. antall: <?= (int)$item['min_quantity'] ?></div>
+      <div class="item-card__sub">Min: <?= (int)$item['min_quantity'] ?> <?= unit_label($item['unit'] ?? 'stk') ?></div>
     </div>
 
     <div class="item-card__side">
       <div class="item-card__qty">
-        <span id="qty-<?= (int)$item['id'] ?>"><?= (int)$item['quantity'] ?></span> stk
+        <span id="qty-<?= (int)$item['id'] ?>"><?= (int)$item['quantity'] ?></span> <?= unit_label($item['unit'] ?? 'stk') ?>
         <small>på lager</small>
       </div>
       <div class="item-card__actions">
@@ -92,6 +105,7 @@ $low = array_filter($items, fn($i) => $i['quantity'] <= $i['min_quantity'] && $i
         <form method="POST" action="delete_item.php" onsubmit="return confirm('Slett «<?= e(addslashes($item['name'])) ?>»?')">
           <?= csrf_field() ?>
           <input type="hidden" name="id" value="<?= (int)$item['id'] ?>">
+          <input type="hidden" name="lager" value="<?= $view ?>">
           <button type="submit" class="btn btn-danger btn-sm btn-icon" title="Slett">🗑</button>
         </form>
       </div>

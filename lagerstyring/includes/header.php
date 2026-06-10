@@ -34,7 +34,8 @@ $initials = mb_strtoupper(mb_substr($_SESSION['username'] ?? '?', 0, 2));
   <div class="sidebar__version">Arbeidsbil</div>
 
   <nav class="sidebar__nav">
-    <a href="index.php" class="<?= ($active_nav??'') === 'lager' ? 'active' : '' ?>">🗂 Lager</a>
+    <a href="index.php" class="<?= ($active_nav??'') === 'lager' ? 'active' : '' ?>">🗂 Felles lager</a>
+    <a href="index.php?lager=mitt" class="<?= ($active_nav??'') === 'mitt' ? 'active' : '' ?>">🚐 Mitt lager</a>
     <a href="add_item.php" class="<?= ($active_nav??'') === 'legg_til' ? 'active' : '' ?>">＋ Legg til vare</a>
     <?php if (!empty($_SESSION['is_admin'])): ?>
     <a href="users.php" class="<?= ($active_nav??'') === 'brukere' ? 'active' : '' ?>">👥 Brukere</a>

@@ -26,11 +26,26 @@ if (!$id || !in_array($delta, [-1, 1, -5, 5, -10, 10], true)) {
     exit;
 }
 
-// Oppdater — ikke gå under 0
+// Tilgangskontroll: felles varer kan endres av alle, personlige kun av eier/admin
+$own = $pdo->prepare("SELECT owner_id FROM items WHERE id = ?");
+$own->execute([$id]);
+$owner = $own->fetch();
+if (!$owner) {
+    http_response_code(404);
+    echo json_encode(['ok' => false, 'error' => 'Varen finnes ikke']);
+    exit;
+}
+if (!can_modify_item($owner['owner_id'] !== null ? (int)$owner['owner_id'] : null)) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'error' => 'Ingen tilgang']);
+    exit;
+}
+
+// Oppdater — ikke gå under 0 (CASE i stedet for GREATEST for portabilitet)
 $stmt = $pdo->prepare(
-    "UPDATE items SET quantity = GREATEST(0, quantity + ?) WHERE id = ?"
+    "UPDATE items SET quantity = CASE WHEN quantity + ? < 0 THEN 0 ELSE quantity + ? END WHERE id = ?"
 );
-$stmt->execute([$delta, $id]);
+$stmt->execute([$delta, $delta, $id]);
 
 $row = $pdo->prepare("SELECT quantity FROM items WHERE id = ?");
 $row->execute([$id]);
