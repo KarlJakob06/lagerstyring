@@ -2,11 +2,28 @@
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once __DIR__ . '/includes/units.php';
 
+$is_admin    = !empty($_SESSION['is_admin']);
+$other_users = $is_admin
+    ? $pdo->prepare("SELECT id, username FROM users WHERE id != ? ORDER BY username ASC")
+    : null;
+if ($other_users) { $other_users->execute([(int)$_SESSION['user_id']]); $other_users = $other_users->fetchAll(); }
+else { $other_users = []; }
+
+/** Valider lager-valg: 'felles', 'mitt' eller (kun admin) 'user_<id>'. */
+function normalize_lager(string $lager, bool $is_admin, array $other_users): string {
+    if ($lager === 'mitt') return 'mitt';
+    if ($is_admin && preg_match('/^user_(\d+)$/', $lager, $m)
+        && in_array((int)$m[1], array_column($other_users, 'id'), false)) {
+        return $lager;
+    }
+    return 'felles';
+}
+
 $errors = [];
 $values = [
     'name' => '', 'elnummer' => '', 'quantity' => '0', 'min_quantity' => '0',
     'unit'  => 'auto',
-    'lager' => ($_GET['lager'] ?? 'felles') === 'mitt' ? 'mitt' : 'felles',
+    'lager' => normalize_lager($_GET['lager'] ?? 'felles', $is_admin, $other_users),
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -18,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $values['quantity']     = (int)($_POST['quantity']    ?? 0);
         $values['min_quantity'] = (int)($_POST['min_quantity']?? 0);
         $values['unit']         = in_array($_POST['unit'] ?? '', ['auto', 'stk', 'm'], true) ? $_POST['unit'] : 'auto';
-        $values['lager']        = ($_POST['lager'] ?? 'felles') === 'mitt' ? 'mitt' : 'felles';
+        $values['lager']        = normalize_lager($_POST['lager'] ?? 'felles', $is_admin, $other_users);
 
         if (!$values['name'])           $errors[] = 'Varenavn er påkrevd.';
         if ($values['quantity'] < 0)    $errors[] = 'Antall kan ikke være negativt.';
@@ -52,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // Bilde hentet fra EFObasen via knappen i skjemaet?
+        // Fortsatt ingen bilde? Prøv bilde valgt via Google-søket i skjemaet
         if (!$image_path && !empty($_POST['fetched_image'])) {
             $f = basename($_POST['fetched_image']);
             if (preg_match('/^[a-f0-9]{24}\.(jpg|png|gif|webp)$/', $f) && is_file(UPLOAD_DIR . $f)) {
@@ -60,18 +77,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // Fortsatt ingen bilde? Prøv å hente automatisk fra EFObasen
-        if (empty($errors) && !$image_path && $values['elnummer']) {
-            require_once __DIR__ . '/includes/product_image.php';
-            $auto = fetch_product_image($values['elnummer']);
-            if ($auto['ok']) {
-                $image_path = $auto['filename'];
-            }
-        }
-
         if (empty($errors)) {
-            $unit     = $values['unit'] === 'auto' ? detect_unit($values['name']) : $values['unit'];
-            $owner_id = $values['lager'] === 'mitt' ? (int)$_SESSION['user_id'] : null;
+            $unit = $values['unit'] === 'auto' ? detect_unit($values['name']) : $values['unit'];
+            if ($values['lager'] === 'mitt')                         $owner_id = (int)$_SESSION['user_id'];
+            elseif (preg_match('/^user_(\d+)$/', $values['lager'], $m)) $owner_id = (int)$m[1];
+            else                                                     $owner_id = null;
 
             $stmt = $pdo->prepare(
                 "INSERT INTO items (name, elnummer, quantity, min_quantity, image_path, unit, owner_id)
@@ -86,10 +96,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $unit,
                 $owner_id,
             ]);
+            if ($values['lager'] === 'mitt')      $lager_navn = 'ditt lager';
+            elseif ($owner_id !== null) {
+                $u = array_values(array_filter($other_users, fn($x) => (int)$x['id'] === $owner_id));
+                $lager_navn = ($u[0]['username'] ?? 'brukeren') . ' sitt lager';
+            } else                                $lager_navn = 'felleslageret';
+
             rotate_csrf();
             flash('success', '✅ «' . $values['name'] . '» ble lagt til i '
-                . ($values['lager'] === 'mitt' ? 'ditt lager' : 'felleslageret')
-                . ' (måles i ' . unit_label($unit) . ').');
+                . $lager_navn . ' (måles i ' . unit_label($unit) . ').');
             header('Location: index.php?lager=' . $values['lager']);
             exit;
         }
@@ -126,12 +141,7 @@ require_once __DIR__ . '/includes/header.php';
         <div class="form-group full">
           <label for="elnummer">Elnummer</label>
           <input type="text" id="elnummer" name="elnummer" value="<?= e($values['elnummer']) ?>" placeholder="f.eks. 1022045">
-          <div style="display:flex;gap:.6rem;margin-top:.4rem;align-items:center">
-            <button type="button" class="btn btn-outline btn-sm" onclick="fetchImage(this)">🖼 Hent bilde fra elnummer</button>
-            <img id="fetch-preview" src="" alt="" style="display:none;width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #e3e7ee">
-          </div>
-          <span class="hint" id="fetch-msg">Bilde hentes automatisk fra EFObasen (grossistenes felles produktregister) når du lagrer — eller trykk knappen for å se det først.</span>
-          <input type="hidden" name="fetched_image" id="fetched_image" value="<?= e($_POST['fetched_image'] ?? '') ?>">
+          <span class="hint">Valgfritt — elnummer fra katalog/grossist. Brukes også i bildesøket.</span>
         </div>
 
         <div class="form-group">
@@ -139,6 +149,9 @@ require_once __DIR__ . '/includes/header.php';
           <select id="lager" name="lager">
             <option value="felles" <?= $values['lager'] === 'felles' ? 'selected' : '' ?>>🗂 Felles lager</option>
             <option value="mitt" <?= $values['lager'] === 'mitt' ? 'selected' : '' ?>>🚐 Mitt lager (<?= e($_SESSION['username'] ?? '') ?>)</option>
+            <?php foreach ($other_users as $ou): ?>
+            <option value="user_<?= (int)$ou['id'] ?>" <?= $values['lager'] === 'user_' . (int)$ou['id'] ? 'selected' : '' ?>>👤 <?= e($ou['username']) ?> sitt lager</option>
+            <?php endforeach; ?>
           </select>
         </div>
 
@@ -166,7 +179,12 @@ require_once __DIR__ . '/includes/header.php';
         <div class="form-group full">
           <label for="image">Bilde (valgfritt)</label>
           <input type="file" id="image" name="image" accept="image/jpeg,image/png,image/gif,image/webp">
-          <span class="hint">JPEG, PNG, GIF eller WebP — maks 5 MB.</span>
+          <div style="margin-top:.5rem">
+            <button type="button" class="btn btn-outline btn-sm" id="img-search-btn" onclick="searchImages()">🔍 Søk etter bilde på Google</button>
+          </div>
+          <div class="img-results" id="img-results"></div>
+          <span class="hint" id="fetch-msg">Last opp egen fil (JPEG/PNG/GIF/WebP, maks 5 MB) — eller søk frem et bilde og trykk på det du vil bruke.</span>
+          <input type="hidden" name="fetched_image" id="fetched_image" value="<?= e($_POST['fetched_image'] ?? '') ?>">
         </div>
 
       </div><!-- /.form-grid -->
@@ -203,37 +221,64 @@ document.getElementById('name').addEventListener('input', updateUnitHint);
 document.getElementById('unit').addEventListener('change', updateUnitHint);
 updateUnitHint();
 
-async function fetchImage(btn) {
-  const el  = document.getElementById('elnummer').value.trim();
+// Google-bildesøk: søk → klikk på treffet du vil bruke
+async function searchImages() {
+  const btn = document.getElementById('img-search-btn');
   const msg = document.getElementById('fetch-msg');
-  if (!el) { msg.textContent = 'Fyll inn elnummer først.'; return; }
+  const box = document.getElementById('img-results');
+  const q = [document.getElementById('name').value, document.getElementById('elnummer').value]
+    .map(s => s.trim()).filter(Boolean).join(' ');
+  if (!q) { msg.textContent = 'Fyll inn varenavn eller elnummer først.'; return; }
   btn.disabled = true;
-  msg.textContent = 'Henter bilde fra EFObasen…';
+  msg.textContent = '🔍 Søker etter bilder…';
+  box.innerHTML = '';
   try {
-    const res = await fetch('ajax_fetch_image.php', {
+    const res = await fetch('ajax_image_search.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `elnummer=${encodeURIComponent(el)}&csrf_token=<?= csrf_token() ?>`
+      body: `q=${encodeURIComponent(q)}&csrf_token=<?= csrf_token() ?>`
     });
     const data = await res.json();
     if (data.ok) {
-      document.getElementById('fetched_image').value = data.filename;
-      const prev = document.getElementById('fetch-preview');
-      prev.src = data.url;
-      prev.style.display = 'inline-block';
-      msg.textContent = '✅ Bilde hentet — lagres sammen med varen.';
-      const nameInput = document.getElementById('name');
-      if (data.name && nameInput && !nameInput.value.trim()) {
-        nameInput.value = data.name;
-        updateUnitHint();
-      }
+      msg.textContent = 'Trykk på bildet du vil bruke:';
+      data.results.forEach(r => {
+        const img = document.createElement('img');
+        img.src = r.thumb;
+        img.title = r.title;
+        img.loading = 'lazy';
+        img.onclick = () => pickImage(r.url, img);
+        box.appendChild(img);
+      });
     } else {
-      msg.textContent = '❌ ' + (data.error || 'Fant ikke bilde.');
+      msg.textContent = '❌ ' + (data.error || 'Søket feilet.');
     }
   } catch (e) {
     msg.textContent = '❌ Noe gikk galt. Prøv igjen.';
   }
   btn.disabled = false;
+}
+
+async function pickImage(url, el) {
+  const msg = document.getElementById('fetch-msg');
+  msg.textContent = '⬇️ Henter bildet…';
+  try {
+    const res = await fetch('ajax_pick_image.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `url=${encodeURIComponent(url)}&csrf_token=<?= csrf_token() ?>`
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('fetched_image').value = data.filename;
+      document.querySelectorAll('#img-results img').forEach(i => i.classList.remove('selected'));
+      el.classList.add('selected');
+      msg.textContent = '✅ Bilde valgt — lagres sammen med varen.';
+    } else {
+      msg.textContent = '❌ ' + (data.error || 'Kunne ikke hente bildet.');
+    }
+  } catch (e) {
+    msg.textContent = '❌ Kunne ikke hente bildet. Prøv et annet treff.';
+  }
 }
 </script>
 

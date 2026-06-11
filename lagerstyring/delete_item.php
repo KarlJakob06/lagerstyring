@@ -14,7 +14,7 @@ if (!verify_csrf($_POST['csrf_token'] ?? '')) {
     exit;
 }
 
-$lager = ($_POST['lager'] ?? 'felles') === 'mitt' ? 'mitt' : 'felles';
+$lager = preg_match('/^(felles|mitt|user_\d+)$/', $_POST['lager'] ?? '') ? $_POST['lager'] : 'felles';
 
 $id = (int)($_POST['id'] ?? 0);
 if ($id) {

@@ -71,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // Bilde hentet fra EFObasen via knappen i skjemaet?
+        // Bilde valgt via Google-søket i skjemaet?
         if (!$delete_old && empty($_FILES['image']['name']) && !empty($_POST['fetched_image'])) {
             $f = basename($_POST['fetched_image']);
             if (preg_match('/^[a-f0-9]{24}\.(jpg|png|gif|webp)$/', $f) && is_file(UPLOAD_DIR . $f)) {
@@ -147,12 +147,7 @@ require_once __DIR__ . '/includes/header.php';
         <div class="form-group full">
           <label for="elnummer">Elnummer</label>
           <input type="text" id="elnummer" name="elnummer" value="<?= e($values['elnummer'] ?? '') ?>">
-          <div style="display:flex;gap:.6rem;margin-top:.4rem;align-items:center">
-            <button type="button" class="btn btn-outline btn-sm" onclick="fetchImage(this)">🖼 Hent bilde fra elnummer</button>
-            <img id="fetch-preview" src="" alt="" style="display:none;width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #e3e7ee">
-          </div>
-          <span class="hint" id="fetch-msg">Henter produktbilde fra EFObasen — erstatter nåværende bilde når du lagrer.</span>
-          <input type="hidden" name="fetched_image" id="fetched_image" value="<?= e($_POST['fetched_image'] ?? '') ?>">
+          <span class="hint">Valgfritt — brukes også i bildesøket.</span>
         </div>
 
         <div class="form-group">
@@ -199,7 +194,12 @@ require_once __DIR__ . '/includes/header.php';
           <label for="image" style="font-weight:400;font-size:.85rem;color:#68768a">Ingen bilde — last opp ett valgfritt:</label>
           <?php endif; ?>
           <input type="file" id="image" name="image" accept="image/jpeg,image/png,image/gif,image/webp" style="margin-top:.4rem">
-          <span class="hint">JPEG, PNG, GIF eller WebP — maks 5 MB.</span>
+          <div style="margin-top:.5rem">
+            <button type="button" class="btn btn-outline btn-sm" id="img-search-btn" onclick="searchImages()">🔍 Søk etter bilde på Google</button>
+          </div>
+          <div class="img-results" id="img-results"></div>
+          <span class="hint" id="fetch-msg">Last opp egen fil (JPEG/PNG/GIF/WebP, maks 5 MB) — eller søk frem et bilde og trykk på det du vil bruke. Erstatter nåværende bilde når du lagrer.</span>
+          <input type="hidden" name="fetched_image" id="fetched_image" value="<?= e($_POST['fetched_image'] ?? '') ?>">
         </div>
 
       </div><!-- /.form-grid -->
@@ -213,32 +213,64 @@ require_once __DIR__ . '/includes/header.php';
 </div>
 
 <script>
-async function fetchImage(btn) {
-  const el  = document.getElementById('elnummer').value.trim();
+// Google-bildesøk: søk → klikk på treffet du vil bruke
+async function searchImages() {
+  const btn = document.getElementById('img-search-btn');
   const msg = document.getElementById('fetch-msg');
-  if (!el) { msg.textContent = 'Fyll inn elnummer først.'; return; }
+  const box = document.getElementById('img-results');
+  const q = [document.getElementById('name').value, document.getElementById('elnummer').value]
+    .map(s => s.trim()).filter(Boolean).join(' ');
+  if (!q) { msg.textContent = 'Fyll inn varenavn eller elnummer først.'; return; }
   btn.disabled = true;
-  msg.textContent = 'Henter bilde fra EFObasen…';
+  msg.textContent = '🔍 Søker etter bilder…';
+  box.innerHTML = '';
   try {
-    const res = await fetch('ajax_fetch_image.php', {
+    const res = await fetch('ajax_image_search.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `elnummer=${encodeURIComponent(el)}&csrf_token=<?= csrf_token() ?>`
+      body: `q=${encodeURIComponent(q)}&csrf_token=<?= csrf_token() ?>`
     });
     const data = await res.json();
     if (data.ok) {
-      document.getElementById('fetched_image').value = data.filename;
-      const prev = document.getElementById('fetch-preview');
-      prev.src = data.url;
-      prev.style.display = 'inline-block';
-      msg.textContent = '✅ Bilde hentet — erstatter nåværende når du lagrer.';
+      msg.textContent = 'Trykk på bildet du vil bruke:';
+      data.results.forEach(r => {
+        const img = document.createElement('img');
+        img.src = r.thumb;
+        img.title = r.title;
+        img.loading = 'lazy';
+        img.onclick = () => pickImage(r.url, img);
+        box.appendChild(img);
+      });
     } else {
-      msg.textContent = '❌ ' + (data.error || 'Fant ikke bilde.');
+      msg.textContent = '❌ ' + (data.error || 'Søket feilet.');
     }
   } catch (e) {
     msg.textContent = '❌ Noe gikk galt. Prøv igjen.';
   }
   btn.disabled = false;
+}
+
+async function pickImage(url, el) {
+  const msg = document.getElementById('fetch-msg');
+  msg.textContent = '⬇️ Henter bildet…';
+  try {
+    const res = await fetch('ajax_pick_image.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `url=${encodeURIComponent(url)}&csrf_token=<?= csrf_token() ?>`
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('fetched_image').value = data.filename;
+      document.querySelectorAll('#img-results img').forEach(i => i.classList.remove('selected'));
+      el.classList.add('selected');
+      msg.textContent = '✅ Bilde valgt — erstatter nåværende når du lagrer.';
+    } else {
+      msg.textContent = '❌ ' + (data.error || 'Kunne ikke hente bildet.');
+    }
+  } catch (e) {
+    msg.textContent = '❌ Kunne ikke hente bildet. Prøv et annet treff.';
+  }
 }
 </script>
 

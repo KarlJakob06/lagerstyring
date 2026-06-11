@@ -2,17 +2,46 @@
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once __DIR__ . '/includes/units.php';
 
-// Hvilket lager vises? 'felles' (standard) eller 'mitt'
-$view = ($_GET['lager'] ?? 'felles') === 'mitt' ? 'mitt' : 'felles';
+$is_admin = !empty($_SESSION['is_admin']);
 
-$page_title = $view === 'mitt' ? 'Mitt lager' : 'Felles lager';
-$active_nav = $view === 'mitt' ? 'mitt' : 'lager';
+// Hvilket lager vises? 'felles' (standard), 'mitt', eller for admin 'user_<id>'
+$view      = $_GET['lager'] ?? 'felles';
+$view_user = null;
+
+if ($view === 'mitt') {
+    $owner_filter = (int)$_SESSION['user_id'];
+} elseif ($is_admin && preg_match('/^user_(\d+)$/', $view, $m)) {
+    $vu = $pdo->prepare("SELECT id, username FROM users WHERE id = ?");
+    $vu->execute([(int)$m[1]]);
+    $view_user = $vu->fetch();
+    if ($view_user) {
+        $owner_filter = (int)$view_user['id'];
+    } else {
+        $view = 'felles';
+        $owner_filter = null;
+    }
+} else {
+    $view = 'felles';
+    $owner_filter = null;
+}
+
+// Admin kan bytte mellom alle lagre i nedtrekksmenyen
+$lager_users = [];
+if ($is_admin) {
+    $lu = $pdo->prepare("SELECT id, username FROM users WHERE id != ? ORDER BY username ASC");
+    $lu->execute([(int)$_SESSION['user_id']]);
+    $lager_users = $lu->fetchAll();
+}
+
+$page_title = $view === 'mitt' ? 'Mitt lager'
+            : ($view_user ? 'Lager: ' . $view_user['username'] : 'Felles lager');
+$active_nav = $view === 'mitt' ? 'mitt' : ($view_user ? '' : 'lager');
 require_once __DIR__ . '/includes/header.php';
 
 // Hent varene i valgt lager
-if ($view === 'mitt') {
+if ($owner_filter !== null) {
     $stmt = $pdo->prepare("SELECT * FROM items WHERE owner_id = ? ORDER BY name ASC");
-    $stmt->execute([$_SESSION['user_id']]);
+    $stmt->execute([$owner_filter]);
 } else {
     $stmt = $pdo->query("SELECT * FROM items WHERE owner_id IS NULL ORDER BY name ASC");
 }
@@ -39,12 +68,23 @@ $low = array_filter($items, fn($i) => $i['quantity'] <= $i['min_quantity'] && $i
 <?php endif; ?>
 
 <div class="toolbar-card">
+  <?php if ($is_admin): ?>
+  <select onchange="location.href='index.php?lager='+encodeURIComponent(this.value)"
+          style="max-width:240px;font-weight:600" title="Velg lager">
+    <option value="felles" <?= $view === 'felles' ? 'selected' : '' ?>>🗂 Felles lager</option>
+    <option value="mitt" <?= $view === 'mitt' ? 'selected' : '' ?>>🚐 Mitt lager</option>
+    <?php foreach ($lager_users as $lu): ?>
+    <option value="user_<?= (int)$lu['id'] ?>" <?= $view === 'user_' . (int)$lu['id'] ? 'selected' : '' ?>>👤 <?= e($lu['username']) ?> sitt lager</option>
+    <?php endforeach; ?>
+  </select>
+  <?php else: ?>
   <span style="font-weight:700;font-size:1.05rem;white-space:nowrap"><?= $view === 'mitt' ? '🚐 Mitt lager' : '🗂 Felles lager' ?></span>
+  <?php endif; ?>
   <div class="search-wrap">
     <span class="search-icon">🔍</span>
     <input type="text" id="search" placeholder="Søk etter varenavn eller elnummer…" autocomplete="off">
   </div>
-  <a href="add_item.php?lager=<?= $view ?>" class="btn btn-primary">＋ Legg til vare</a>
+  <a href="add_item.php?lager=<?= e($view) ?>" class="btn btn-primary">＋ Legg til vare</a>
 </div>
 
 <?php if (empty($items)): ?>
@@ -52,8 +92,8 @@ $low = array_filter($items, fn($i) => $i['quantity'] <= $i['min_quantity'] && $i
   <div class="card-body" style="text-align:center;padding:3rem 1rem;color:#7a8699">
     <div style="font-size:2.5rem;margin-bottom:.75rem">📦</div>
     <p style="font-size:1rem;font-weight:600;margin-bottom:.4rem">Ingen varer registrert</p>
-    <p style="font-size:.875rem;margin-bottom:1.2rem"><?= $view === 'mitt' ? 'Du har ingen varer i ditt personlige lager ennå.' : 'Kom i gang ved å legge til den første varen.' ?></p>
-    <a href="add_item.php?lager=<?= $view ?>" class="btn btn-primary">＋ Legg til vare</a>
+    <p style="font-size:.875rem;margin-bottom:1.2rem"><?= $view === 'mitt' ? 'Du har ingen varer i ditt personlige lager ennå.' : ($view_user ? 'Dette lageret er tomt.' : 'Kom i gang ved å legge til den første varen.') ?></p>
+    <a href="add_item.php?lager=<?= e($view) ?>" class="btn btn-primary">＋ Legg til vare</a>
   </div>
 </div>
 <?php else: ?>
@@ -105,7 +145,7 @@ $low = array_filter($items, fn($i) => $i['quantity'] <= $i['min_quantity'] && $i
         <form method="POST" action="delete_item.php" onsubmit="return confirm('Slett «<?= e(addslashes($item['name'])) ?>»?')">
           <?= csrf_field() ?>
           <input type="hidden" name="id" value="<?= (int)$item['id'] ?>">
-          <input type="hidden" name="lager" value="<?= $view ?>">
+          <input type="hidden" name="lager" value="<?= e($view) ?>">
           <button type="submit" class="btn btn-danger btn-sm btn-icon" title="Slett">🗑</button>
         </form>
       </div>
