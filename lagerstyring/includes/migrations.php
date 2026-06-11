@@ -1,24 +1,17 @@
 <?php
 /**
- * Enkle, idempotente databasemigreringer.
+ * Enkle, selvhelbredende databasemigreringer.
  *
- * Kjøres automatisk fra config.php ved hver sidevisning (én billig
- * SELECT når alt er oppdatert). Nye kolonner legges dermed til av seg
- * selv etter automatisk deploy fra GitHub — ingen manuelle steg.
+ * Kjøres automatisk fra config.php. I stedet for et versjonsflagg som
+ * kan komme ut av synk med virkeligheten, sjekkes faktiske kolonner —
+ * mangler en kolonne, forsøkes migreringen (på nytt). Slik kan ikke en
+ * halvferdig migrering låse seg og ta ned hele siden.
  */
 
 function run_migrations(PDO $pdo): void {
-    $pdo->exec("CREATE TABLE IF NOT EXISTS settings (
-        name  VARCHAR(50) PRIMARY KEY,
-        value VARCHAR(255) NOT NULL
-    )");
-
-    $ver = (int)($pdo->query(
-        "SELECT value FROM settings WHERE name = 'schema_version'"
-    )->fetchColumn() ?: 0);
-
-    if ($ver < 1) {
-        // v1: lager per bruker, enheter (stk/m) og kontosikkerhet
+    // v1: lager per bruker, enheter (stk/m) og kontosikkerhet.
+    // Gates på en faktisk kolonne, ikke et flagg.
+    if (!table_has_column($pdo, 'items', 'owner_id')) {
         migration_exec($pdo, [
             "ALTER TABLE items ADD COLUMN owner_id INT NULL DEFAULT NULL",
             "ALTER TABLE items ADD COLUMN unit VARCHAR(8) NOT NULL DEFAULT 'stk'",
@@ -27,12 +20,20 @@ function run_migrations(PDO $pdo): void {
             "ALTER TABLE users ADD COLUMN last_login DATETIME NULL DEFAULT NULL",
             "CREATE INDEX idx_items_owner ON items (owner_id)",
         ]);
-        set_schema_version($pdo, 1);
     }
 }
 
-/** Kjør hver setning for seg — feil ignoreres slik at allerede
- *  eksisterende kolonner/indekser ikke stopper migreringen. */
+/** Finnes kolonnen? (Tabell- og kolonnenavn er faste literaler i koden.) */
+function table_has_column(PDO $pdo, string $table, string $col): bool {
+    try {
+        $pdo->query("SELECT `$col` FROM `$table` LIMIT 1");
+        return true;
+    } catch (PDOException $e) {
+        return false;
+    }
+}
+
+/** Kjør hver setning for seg — «finnes allerede»-feil ignoreres. */
 function migration_exec(PDO $pdo, array $statements): void {
     foreach ($statements as $sql) {
         try {
@@ -41,10 +42,4 @@ function migration_exec(PDO $pdo, array $statements): void {
             // Kolonnen/indeksen finnes fra før — trygt å fortsette
         }
     }
-}
-
-function set_schema_version(PDO $pdo, int $version): void {
-    $pdo->prepare("DELETE FROM settings WHERE name = 'schema_version'")->execute();
-    $pdo->prepare("INSERT INTO settings (name, value) VALUES ('schema_version', ?)")
-        ->execute([(string)$version]);
 }

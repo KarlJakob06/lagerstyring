@@ -50,6 +50,12 @@ try {
         . '</div>');
 }
 
-// Kjør eventuelle ventende databasemigreringer automatisk
+// Kjør eventuelle ventende databasemigreringer automatisk.
+// Pakket inn slik at et migreringsproblem aldri kan ta ned hele siden.
 require_once __DIR__ . '/includes/migrations.php';
-run_migrations($pdo);
+try {
+    run_migrations($pdo);
+} catch (Throwable $e) {
+    // Logges, men stopper ikke sidevisningen
+    error_log('Migrering feilet: ' . $e->getMessage());
+}
