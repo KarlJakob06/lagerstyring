@@ -7,8 +7,9 @@
  *   define('GOOGLE_API_KEY', '...');  // console.cloud.google.com → aktiver
  *                                     // "Custom Search API" → lag API-nøkkel
  *   define('GOOGLE_CSE_ID',  '...');  // programmablesearchengine.google.com →
- *                                     // ny søkemotor → "Søk på hele nettet" +
- *                                     // bildesøk PÅ → kopier søkemotor-ID-en
+ *                                     // ny søkemotor → legg inn grossist-/
+ *                                     // produsentdomener under "Sider å søke i"
+ *                                     // og slå bildesøk PÅ → kopier søkemotor-ID-en
  */
 
 if (!defined('GOOGLE_API_KEY')) define('GOOGLE_API_KEY', '');
@@ -23,6 +24,10 @@ function google_image_search(string $query): array {
     if (GOOGLE_API_KEY === '' || GOOGLE_CSE_ID === '') {
         return ['ok' => false, 'error' => 'Bildesøk er ikke satt opp ennå: legg GOOGLE_API_KEY og '
             . 'GOOGLE_CSE_ID inn i config.local.php (se config.local.example.php).'];
+    }
+    if (!http_transport_available()) {
+        return ['ok' => false, 'error' => 'Serveren mangler både curl og allow_url_fopen. '
+            . 'Be Uniweb-support aktivere PHP-utvidelsen "curl".'];
     }
 
     $url = 'https://www.googleapis.com/customsearch/v1?' . http_build_query([
@@ -93,22 +98,63 @@ function url_is_safe(string $url): bool {
     );
 }
 
+/** Er noen brukbar HTTP-transport tilgjengelig på serveren? */
+function http_transport_available(): bool {
+    return function_exists('curl_init')
+        || (function_exists('ini_get') && filter_var(ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOLEAN));
+}
+
+/**
+ * Hent en URL. Bruker curl hvis tilgjengelig, ellers file_get_contents
+ * (allow_url_fopen). Returnerer null ved feil eller status != 200.
+ * Kaster RuntimeException hvis ingen transport finnes — slik at
+ * endepunktet kan gi en tydelig melding i stedet for stille å feile.
+ */
 function image_search_http_get(string $url, bool $follow_redirects = true): ?string {
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => $follow_redirects,
-        CURLOPT_MAXREDIRS      => 3,
-        CURLOPT_PROTOCOLS      => CURLPROTO_HTTP | CURLPROTO_HTTPS,
-        CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
-        CURLOPT_CONNECTTIMEOUT => 4,
-        CURLOPT_TIMEOUT        => 12,
-        CURLOPT_USERAGENT      => 'Mozilla/5.0 (lagerstyring-arbeidsbil)',
-    ]);
-    $data = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-    curl_close($ch);
-    return ($data !== false && $code === 200) ? $data : null;
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => $follow_redirects,
+            CURLOPT_MAXREDIRS      => 3,
+            CURLOPT_CONNECTTIMEOUT => 4,
+            CURLOPT_TIMEOUT        => 12,
+            CURLOPT_USERAGENT      => 'Mozilla/5.0 (lagerstyring-arbeidsbil)',
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+        $data = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+        return ($data !== false && $code === 200) ? $data : null;
+    }
+
+    // Fallback uten curl
+    if (!filter_var(ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOLEAN)) {
+        throw new RuntimeException(
+            'Serveren mangler både curl og allow_url_fopen — kan ikke hente bilder. '
+            . 'Be Uniweb-support aktivere PHP-utvidelsen "curl".'
+        );
+    }
+    $ctx = stream_context_create(['http' => [
+        'method'        => 'GET',
+        'timeout'       => 12,
+        'user_agent'    => 'Mozilla/5.0 (lagerstyring-arbeidsbil)',
+        'follow_location' => $follow_redirects ? 1 : 0,
+        'max_redirects' => 3,
+        'ignore_errors' => true,
+    ]]);
+    $data = @file_get_contents($url, false, $ctx);
+    if ($data === false) {
+        return null;
+    }
+    // Plukk HTTP-statuskoden fra $http_response_header
+    $ok = false;
+    foreach ($http_response_header ?? [] as $h) {
+        if (preg_match('#^HTTP/\S+\s+(\d{3})#', $h, $m)) {
+            $ok = ($m[1] === '200');
+        }
+    }
+    return $ok ? $data : null;
 }
 
 /** Lagre bildebytes til uploads/ med tilfeldig filnavn (mime-validert). */
@@ -116,10 +162,15 @@ function save_image_bytes(string $bytes): ?string {
     if ($bytes === '' || strlen($bytes) > MAX_FILE_SIZE) {
         return null;
     }
-    $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime  = $finfo->buffer($bytes);
-    $ext   = ['image/jpeg' => 'jpg', 'image/png' => 'png',
-              'image/gif' => 'gif', 'image/webp' => 'webp'][$mime] ?? null;
+    // Bestem bildetype — bruk fileinfo hvis tilgjengelig, ellers GD/signatur
+    if (class_exists('finfo')) {
+        $mime = (new finfo(FILEINFO_MIME_TYPE))->buffer($bytes);
+    } else {
+        $info = @getimagesizefromstring($bytes);
+        $mime = $info['mime'] ?? null;
+    }
+    $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png',
+            'image/gif' => 'gif', 'image/webp' => 'webp'][$mime] ?? null;
     if (!$ext) {
         return null;
     }
