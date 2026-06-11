@@ -15,8 +15,10 @@ En enkel, sikker webapp for å holde oversikt over varelager i arbeidsbilen.
 - ✅ Automatisk enhetsdeteksjon: kabel/ledning/rør måles i meter,
      resten i stk (kan overstyres manuelt)
 - ✅ Advarsel ved lav beholdning (markeres tydelig)
-- ✅ Automatisk henting av produktbilde fra EFObasen via elnummer
-     (felleskilden grossistene Ahlsell, Onninen, Solar og Sonepar bruker)
+- ✅ Google-bildesøk rett i skjemaet: søk på varenavn/elnummer, trykk
+     på bildet du vil bruke — serveren henter og lagrer det selv
+     (krever gratis Google API-nøkkel, se config.local.example.php)
+- ✅ Admin kan se og administrere alle brukeres lagre
 - ✅ Hurtigoppdatering av antall med +/– knapper
 - ✅ Søk på varenavn og elnummer
 - ✅ Brukerstyring for admin (legg til / slett brukere)
